@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fechamento Bruna</title>
+
+<style>
+body{
+font-family:Arial;
+background:#f5f5f5;
+text-align:center;
+font-weight:bold;
+}
+
+@media print {
+body{
+background:white;
+-webkit-print-color-adjust: exact;
+print-color-adjust: exact;
+}
+*{
+-webkit-print-color-adjust: exact !important;
+print-color-adjust: exact !important;
+}
+}
+
+.box{
+background:#fff;
+margin:10px;
+padding:15px;
+border-radius:15px;
+}
+
+.btnTipo{
+background:black;
+color:white;
+padding:12px;
+border-radius:20px;
+margin-top:10px;
+}
+
+.amarelo{background:#ffd600 !important;color:black !important;}
+.laranja{background:orange !important;color:black !important;}
+.vermelho{background:red !important;color:white !important;}
+
+.btn{
+background:#ffd600;
+padding:15px;
+margin:5px;
+border-radius:12px;
+border:none;
+width:80%;
+font-weight:bold;
+}
+
+.btnSmall{
+background:#ffd600;
+padding:8px;
+border-radius:10px;
+margin:3px;
+width:80px;
+border:none;
+}
+
+input{
+width:90%;
+padding:12px;
+border-radius:10px;
+margin:5px;
+font-size:14px;
+font-weight:bold;
+}
+
+.resumo{
+background:#053d25;
+color:white;
+padding:15px;
+border-radius:10px;
+text-align:left;
+line-height:1.6;
+}
+
+.card{
+background:#dfe4ea;
+padding:10px;
+margin:5px;
+border-radius:10px;
+}
+
+.hidden{display:none;}
+</style>
+</head>
+
+<body>
+
+<h1>🔥 Bruna</h1>
+<input type="date" id="data" onchange="trocarDia()">
+
+<div id="resumo" class="resumo"></div>
+
+<div class="box">
+<h2>📦 Fechamento</h2>
+<div id="fechamento"></div>
+</div>
+
+<div class="box">
+<h2>📋 Chamados</h2>
+<input id="idChamado" placeholder="ID">
+<input id="numChamado" placeholder="Número">
+<button class="btn" onclick="addChamado()">Adicionar</button>
+<div id="listaChamados"></div>
+</div>
+
+<div class="box">
+<h2>🕒 Horário de Pico</h2>
+<input id="horaPico" placeholder="Horário">
+<input id="obsPico" placeholder="Observação">
+<button class="btn" onclick="addPico()">Adicionar</button>
+<div id="listaPico"></div>
+</div>
+
+<div class="box">
+<h2 onclick="toggleComp()">📊 Comparação (clique)</h2>
+
+<button class="btnSmall" onclick="comparar('dia')">Dia</button>
+<button class="btnSmall" onclick="comparar('semana')">Semana</button>
+<button class="btnSmall" onclick="comparar('mes')">Mês</button>
+
+<div id="compArea" class="hidden"></div>
+</div>
+
+<div class="box">
+<h2 onclick="toggleRel()">📈 Relatório (clique)</h2>
+<div id="relArea" class="hidden"></div>
+</div>
+
+<button class="btn" onclick="enviarWhats()">📲 WhatsApp</button>
+<button class="btn" onclick="window.print()">📄 PDF</button>
+<button class="btn" onclick="limpar()">🧹 Limpar</button>
+
+<script>
+
+let banco = JSON.parse(localStorage.getItem("banco")) || {};
+let data;
+
+let tipos = ["Sem ID","Abrir Chamado","Reembalar","Avarias","Backlog Operacional","Tratativa Operacional"];
+
+function formatarDataBR(d){
+let [a,m,dd]=d.split("-");
+return `${dd}/${m}/${a}`;
+}
+
+function garantirData(){
+data=document.getElementById("data").value;
+if(!banco[data]){
+banco[data]={dados:{},obs:{},chamados:[],pico:[]};
+}
+}
+
+function trocarDia(){
+garantirData();
+render();
+renderChamados();
+renderPico();
+}
+
+function salvar(){
+localStorage.setItem("banco", JSON.stringify(banco));
+}
+
+function add(t){
+garantirData();
+banco[data].dados[t]=(banco[data].dados[t]||0)+1;
+salvar(); render();
+}
+
+function remove(t){
+garantirData();
+banco[data].dados[t]=Math.max((banco[data].dados[t]||0)-1,0);
+salvar(); render();
+}
+
+function salvarObs(t,v){
+garantirData();
+banco[data].obs[t]=v;
+salvar();
+}
+
+function statusOperacao(sem,av,ch){
+let score = (sem*3)+(av*2)+(ch*1);
+if(score>300)return["🔴 CRÍTICA","red"];
+if(score>60)return["🟠 ATENÇÃO","orange"];
+return["🟢 CONTROLADA","lightgreen"];
+}
+
+/* 🔥 CORREÇÃO DA PORCENTAGEM */
+function calc(h,r){
+let diff = h - r;
+let seta = diff>0 ? "⬆️" : diff<0 ? "⬇️" : "➖";
+
+let perc;
+
+if(r === 0 && h > 0){
+    perc = "Novo";
+}
+else if(r === 0 && h === 0){
+    perc = "0%";
+}
+else{
+    perc = ((diff/r)*100).toFixed(1) + "%";
+}
+
+return `${seta} ${diff} (${perc})`;
+}
+
+function atualizarResumo(total){
+
+let d=banco[data];
+
+let sem=d.dados["Sem ID"]||0;
+let av=d.dados["Avarias"]||0;
+let ch=(d.chamados||[]).length;
+
+/* comparação */
+let datas=Object.keys(banco).sort();
+let index=datas.indexOf(data);
+
+let ontemData = datas[index-1];
+let ontem = banco[ontemData] || {dados:{},chamados:[]};
+
+let temOntem = ontemData && banco[ontemData] && Object.keys(banco[ontemData].dados).length > 0;
+
+let compHTML="";
+
+if(temOntem){
+compHTML=`
+<b>📈 COMPARAÇÃO COM ONTEM</b><br>
+Sem ID: ${calc(sem, ontem.dados["Sem ID"]||0)}<br>
+Avarias: ${calc(av, ontem.dados["Avarias"]||0)}<br>
+Chamados: ${calc(ch, (ontem.chamados||[]).length)}<br><br>
+`;
+}else{
+compHTML=`<b>📈 COMPARAÇÃO COM ONTEM</b><br>Sem histórico<br><br>`;
+}
+
+let [status,cor]=statusOperacao(sem,av,ch);
+
+let html=`
+<b>📊 FECHAMENTO - DIVERGÊNCIA BRUNA</b><br>
+📅 ${formatarDataBR(data)}<br><br>
+
+<b>STATUS: <span style="color:${cor}">${status}</span></b><br><br>
+`;
+
+tipos.forEach(t=>{
+let v=d.dados[t]||0;
+if(v>0){
+html+=`${t}: ${v}<br>`;
+if(d.obs[t]) html+=`${d.obs[t]}<br><br>`;
+}
+});
+
+if(d.chamados.length){
+html+=`📋 Chamados:<br>`;
+d.chamados.forEach(c=> html+=`🔷 ${c.id} | ${c.num}<br>`);
+html+="<br>";
+}
+
+if(d.pico.length){
+html+=`🕒 Pico:<br>`;
+d.pico.forEach(p=> html+=`🟡 ${p.hora} - ${p.obs}<br>`);
+}
+
+html+=`<br><b>📦 TOTAL: ${total}</b><br><br>${compHTML}`;
+
+resumo.innerHTML=html;
+}
+
+/* resto igual */
+function render(){
+let div=fechamento;
+div.innerHTML="";
+let total=0;
+
+tipos.forEach(t=>{
+let v=banco[data].dados[t]||0;
+total+=v;
+
+let classe="btnTipo";
+
+if(t==="Sem ID"){
+if(v>=55) classe+=" vermelho";
+else if(v>=15) classe+=" laranja";
+else if(v>0) classe+=" amarelo";
+}
+else if(t==="Avarias"){
+if(v>=25) classe+=" vermelho";
+else if(v>=15) classe+=" laranja";
+else if(v>0) classe+=" amarelo";
+}
+else{
+if(v>0) classe+=" amarelo";
+}
+
+div.innerHTML+=`
+<div class="${classe}">${t}</div>
+<p>${v}</p>
+<button class="btnSmall" onclick="add('${t}')">+</button>
+<button class="btnSmall" onclick="remove('${t}')">-</button>
+<input 
+value="${banco[data].obs[t]||''}" 
+oninput="salvarObs('${t}',this.value)"
+placeholder="Observação ${t}">
+`;
+});
+
+atualizarResumo(total);
+}
+
+function limpar(){
+if(confirm("Limpar apenas este dia?")){
+garantirData();
+banco[data]={
+dados:{
+"Sem ID":0,
+"Abrir Chamado":0,
+"Reembalar":0,
+"Avarias":0,
+"Backlog Operacional":0,
+"Tratativa Operacional":0
+},
+obs:{},
+chamados:[],
+pico:[]
+};
+salvar();
+render();
+renderChamados();
+renderPico();
+}
+}
+
+function renderChamados(){
+listaChamados.innerHTML="";
+(banco[data]?.chamados||[]).forEach((c,i)=>{
+listaChamados.innerHTML+=`
+<div class="card" style="display:flex;justify-content:space-between;">
+<span>🔷 ${c.id} | ${c.num}</span>
+<button onclick="delChamado(${i})">❌</button>
+</div>`;
+});
+}
+
+function addChamado(){
+garantirData();
+let id=document.getElementById("idChamado").value;
+let num=document.getElementById("numChamado").value;
+if(!id||!num)return;
+banco[data].chamados.push({id,num});
+salvar();
+renderChamados();
+render();
+idChamado.value="";
+numChamado.value="";
+}
+
+function delChamado(i){
+banco[data].chamados.splice(i,1);
+salvar(); renderChamados(); render();
+}
+
+function renderPico(){
+listaPico.innerHTML="";
+(banco[data]?.pico||[]).forEach((p,i)=>{
+listaPico.innerHTML+=`
+<div class="card" style="display:flex;justify-content:space-between;">
+<span>🟡 ${p.hora} - ${p.obs}</span>
+<button onclick="delPico(${i})">❌</button>
+</div>`;
+});
+}
+
+function addPico(){
+garantirData();
+let hora=document.getElementById("horaPico").value;
+let obs=document.getElementById("obsPico").value;
+if(!hora||!obs)return;
+banco[data].pico.push({hora,obs});
+salvar();
+renderPico();
+render();
+horaPico.value="";
+obsPico.value="";
+}
+
+function toggleComp(){
+compArea.classList.toggle("hidden");
+if(!compArea.classList.contains("hidden")) comparar();
+}
+
+function comparar(tipo="dia"){
+let datas=Object.keys(banco).sort();
+let index=datas.indexOf(data);
+
+let refIndex = tipo==="dia"?index-1:tipo==="semana"?index-7:index-30;
+if(refIndex<0) refIndex=0;
+
+let refData = datas[refIndex];
+let ref = banco[refData] || {dados:{},chamados:[]};
+
+let temHistorico = refData && banco[refData] && Object.keys(banco[refData].dados).length > 0;
+
+let hoje=banco[data];
+
+let nomeRef = tipo==="dia" ? "Comparado com Ontem" :
+               tipo==="semana" ? "Comparado com Semana" :
+               "Comparado com Mês";
+
+let html=`<b>📊 COMPARAÇÃO (${tipo.toUpperCase()})</b><br><br>`;
+
+[
+{n:"Sem ID",h:hoje.dados["Sem ID"]||0,r:ref.dados["Sem ID"]||0},
+{n:"Avarias",h:hoje.dados["Avarias"]||0,r:ref.dados["Avarias"]||0},
+{n:"Chamados",h:(hoje.chamados||[]).length,r:(ref.chamados||[]).length}
+]
+
+.forEach(i=>{
+let texto = temHistorico ? calc(i.h,i.r) : "Sem histórico";
+
+html+=`
+<div class="card">
+<b>${i.n}</b><br>
+Hoje: ${i.h} | ${nomeRef}: ${temHistorico ? i.r : "Sem histórico"}<br>
+${texto}
+</div>`;
+});
+
+compArea.innerHTML=html;
+}
+
+function toggleRel(){
+relArea.classList.toggle("hidden");
+if(!relArea.classList.contains("hidden")) verRelatorio();
+}
+
+function verRelatorio(){
+let datas=Object.keys(banco).sort();
+let html="<b>📈 RELATÓRIO OPERACIONAL</b><br><br>";
+
+datas.forEach((d,i)=>{
+let atual=banco[d];
+let ant=banco[datas[i-1]]||{dados:{}};
+
+let diff=(atual.dados["Sem ID"]||0)-(ant.dados["Sem ID"]||0);
+let trend=diff>0?"⬆️ Subiu":diff<0?"⬇️ Caiu":"➖ Igual";
+
+html+=`
+<div class="card">
+<b>${formatarDataBR(d)}</b><br>
+Sem ID: ${atual.dados["Sem ID"]||0}<br>
+Avarias: ${atual.dados["Avarias"]||0}<br>
+Chamados: ${(atual.chamados||[]).length}<br>
+${trend}
+</div>`;
+});
+
+relArea.innerHTML=html;
+}
+
+function enviarWhats(){
+let texto=resumo.innerText;
+window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`);
+}
+
+window.onload=()=>{
+let hoje=new Date().toISOString().split("T")[0];
+data=hoje;
+document.getElementById("data").value=hoje;
+trocarDia();
+}
+
+</script>
+
+</body>
+</html>
