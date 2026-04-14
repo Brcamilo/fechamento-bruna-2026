@@ -136,7 +136,7 @@ input{width:95%;font-size:14px;}
 </div>
 
 <div class="box">
-<h2>🕒 REGISTRO DE FLUXO POR HORÁRIO</h2>
+<h2>🕒 HORÁRIO DE PICO</h2>
 <input id="horaPico" placeholder="Horário">
 <input id="obsPico" placeholder="Observação">
 <button class="btn" onclick="addPico()">Adicionar</button>
@@ -162,6 +162,9 @@ input{width:95%;font-size:14px;}
 
 <div class="box">
 <h2 onclick="toggleRel()">📈 Relatório (clique)</h2>
+<button class="btnSmall" onclick="verRelatorioFiltro('dia')">Dia</button>
+<button class="btnSmall" onclick="verRelatorioFiltro('semana')">Semana</button>
+<button class="btnSmall" onclick="verRelatorioFiltro('mes')">Mês</button>
 <div id="relArea" class="hidden"></div>
 </div>
 
@@ -222,7 +225,12 @@ function statusOperacao(sem,av,ch){
 let score = (sem*3)+(av*2)+(ch*1);
 if(score>300)return["🔴 CRÍTICA","red"];
 if(score>60)return["🟠 ATENÇÃO","orange"];
-return["🟢 CONTROLADA","lightgreen"];
+return["🟢 CONTROLADA","lightgreen"];}
+
+function statusSemID(v){
+if(v>=55)return["🔴 CRÍTICO","red"];
+if(v>=15)return["🟠 ACIMA DO LIMITE","orange"];
+return["🟢 BOM","lightgreen"];
 }
 
 function calc(h,r){
@@ -264,28 +272,45 @@ let compHTML="";
 
 if(temOntem){
 compHTML=`
-<b>📈 COMPARAÇÃO COM ONTEM</b><br>
+<b></b><br>
 Sem ID: ${calc(sem, ontem.dados["Sem ID"]||0)}<br>
 Avarias: ${calc(av, ontem.dados["Avarias"]||0)}<br>
 Chamados: ${calc(ch, (ontem.chamados||[]).length)}<br><br>
 `;
 }else{
-compHTML=`<b>📈 COMPARAÇÃO COM ONTEM</b><br>Sem histórico<br><br>`;
+compHTML=`<b></b><br>Sem histórico<br><br>`;
 }
 
 let [status,cor]=statusOperacao(sem,av,ch);
 
 let html=`
 <b>📊 FECHAMENTO - DIVERGÊNCIA BRUNA</b><br>
-📅 ${formatarDataBR(data)}<br><br>
+📅 ${formatarDataBR(data)}<br><br><div class="obsDestaque"><b>📊 COMPARATIVO DIÁRIO</b><br><b></b><br>${compHTML}</div>
 
-<b>STATUS: <span style="color:${cor}">${status}</span></b><br><br>
+<b>STATUS: <span style="color:${cor}">${status}</span></b><br>
+<b>SEM ID: <span style="color:${statusSemID(sem)[1]}">${statusSemID(sem)[0]}</span></b><br><br>
 `;
 
 tipos.forEach(t=>{
 let v=d.dados[t]||0;
 if(v>0){
-html+=`${t}: ${v}<br>`;
+let bolinha="🟢";
+
+if(t==="Sem ID"){
+if(v>=55) bolinha="🔴";
+else if(v>=15) bolinha="🟠";
+else bolinha="🟡";
+}
+else if(t==="Avarias"){
+if(v>=25) bolinha="🔴";
+else if(v>=15) bolinha="🟠";
+else bolinha="🟡";
+}
+else if(t==="Chamado aberto" || t==="Abrir Chamado"){
+bolinha="🔵";
+}
+
+html+=`${bolinha} ${t}: ${v}<br>`;
 if(d.obs[t]) html+=`${d.obs[t]}<br><br>`;
 }
 });
@@ -297,8 +322,8 @@ html+="<br>";
 }
 
 if(d.pico.length){
-html+=`🕒 REGISTRO DE FLUXO POR HORÁRIO:<br>`;
-d.pico.forEach(p=> html+=`<div class="obsDestaque">🟡 ${p.hora} - ${p.obs}</div>`);
+html+=`🕒 HORÁRIO DE PICO:<br>`;
+d.pico.forEach(p=> html+=`<div class="obsDestaque">🟠 ${p.hora} - ${p.obs}</div>`);
 }
 
 /* OBSERVAÇÕES NO RESUMO */
@@ -307,7 +332,7 @@ html+=`<br>📝 OBSERVAÇÕES:<br>`;
 d.observacoes.forEach(o=> html+=`<div class="obsDestaque">- ${o}</div>`);
 }
 
-html+=`<br><b>📦 TOTAL: ${total}</b><br><br>${compHTML}`;
+html+=`<br><b>📦 TOTAL: ${total}</b><br><br>`;
 
 resumo.innerHTML=html;
 }
@@ -398,7 +423,7 @@ listaPico.innerHTML="";
 (banco[data]?.pico||[]).forEach((p,i)=>{
 listaPico.innerHTML+=`
 <div class="card" style="display:flex;justify-content:space-between;">
-<span>🟡 ${p.hora} - ${p.obs}</span>
+<span>🟠 ${p.hora} - ${p.obs}</span>
 <button onclick="delPico(${i})">❌</button>
 </div>`;
 });
@@ -486,7 +511,7 @@ let nomeRef = tipo==="dia" ? "Comparado com Ontem" :
                tipo==="semana" ? "Comparado com Semana" :
                "Comparado com Mês";
 
-let html=`<b>📊 COMPARAÇÃO (${tipo.toUpperCase()})</b><br><br>`;
+let html=`<b>📊 COMPARATIVO DIÁRIO (${tipo.toUpperCase()})</b><br><br>`;
 
 [
 {n:"Sem ID",h:hoje.dados["Sem ID"]||0,r:ref.dados["Sem ID"]||0},
@@ -525,6 +550,38 @@ let diff=(atual.dados["Sem ID"]||0)-(ant.dados["Sem ID"]||0);
 let trend=diff>0?"⬆️ Subiu":diff<0?"⬇️ Caiu":"➖ Igual";
 
 let perc = (ant.dados && ant.dados["Sem ID"]) ? (((atual.dados["Sem ID"]||0 - (ant.dados["Sem ID"]||0))/(ant.dados["Sem ID"]||1))*100).toFixed(1)+"%" : "Novo";
+html+=`
+<div class="card" style="border-left:6px solid #053d25;text-align:left;">
+<b>${formatarDataBR(d)}</b><br>
+Sem ID: ${atual.dados["Sem ID"]||0}<br>
+Avarias: ${atual.dados["Avarias"]||0}<br>
+Chamados: ${(atual.chamados||[]).length}<br>
+${trend} (${perc})
+</div>`;
+});
+
+relArea.innerHTML=html;
+}
+
+
+function verRelatorioFiltro(tipo){
+let datas=Object.keys(banco).sort();
+
+if(tipo==="dia") datas=datas.slice(-1);
+if(tipo==="semana") datas=datas.slice(-7);
+if(tipo==="mes") datas=datas.slice(-30);
+
+let html="<b>📈 RELATÓRIO OPERACIONAL</b><br><br>";
+
+datas.forEach((d,i)=>{
+let atual=banco[d];
+let ant=banco[datas[i-1]]||{dados:{}};
+
+let diff=(atual.dados["Sem ID"]||0)-(ant.dados["Sem ID"]||0);
+let trend=diff>0?"⬆️ Subiu":diff<0?"⬇️ Caiu":"➖ Igual";
+
+let perc = (ant.dados && ant.dados["Sem ID"]) ? (((atual.dados["Sem ID"]||0 - (ant.dados["Sem ID"]||0))/(ant.dados["Sem ID"]||1))*100).toFixed(1)+"%" : "Novo";
+
 html+=`
 <div class="card" style="border-left:6px solid #053d25;text-align:left;">
 <b>${formatarDataBR(d)}</b><br>
