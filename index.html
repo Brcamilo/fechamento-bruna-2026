@@ -11,6 +11,7 @@ font-family:Arial;
 background:#f5f5f5;
 text-align:center;
 font-weight:bold;
+text-transform:uppercase;
 }
 
 @media print {
@@ -52,6 +53,7 @@ border-radius:12px;
 border:none;
 width:80%;
 font-weight:bold;
+text-transform:uppercase;
 }
 
 .btnSmall{
@@ -70,6 +72,7 @@ border-radius:10px;
 margin:5px;
 font-size:14px;
 font-weight:bold;
+text-transform:uppercase;
 }
 
 .resumo{
@@ -89,6 +92,26 @@ border-radius:10px;
 }
 
 .hidden{display:none;}
+
+.obsDestaque{
+background:#c8f7dc;
+color:#053d25;
+padding:6px;
+border-radius:6px;
+margin-top:4px;
+display:block;
+font-weight:bold;
+}
+
+@media (max-width: 600px){
+h1{font-size:22px;}
+.box{padding:10px;margin:5px;}
+.btn{width:95%;font-size:14px;}
+input{width:95%;font-size:14px;}
+.resumo{font-size:13px;line-height:1.4;}
+.card{font-size:13px;}
+}
+
 </style>
 </head>
 
@@ -105,7 +128,7 @@ border-radius:10px;
 </div>
 
 <div class="box">
-<h2>📋 Chamados</h2>
+<h2>📋 Chamado Aberto no Dia</h2>
 <input id="idChamado" placeholder="ID">
 <input id="numChamado" placeholder="Número">
 <button class="btn" onclick="addChamado()">Adicionar</button>
@@ -113,11 +136,18 @@ border-radius:10px;
 </div>
 
 <div class="box">
-<h2>🕒 Horário de Pico</h2>
+<h2>🕒 REGISTRO DE FLUXO POR HORÁRIO</h2>
 <input id="horaPico" placeholder="Horário">
 <input id="obsPico" placeholder="Observação">
 <button class="btn" onclick="addPico()">Adicionar</button>
 <div id="listaPico"></div>
+</div>
+
+<div class="box">
+<h2>📝 Observações</h2>
+<input id="obsTexto" placeholder="Digite a observação">
+<button class="btn" onclick="addObs()">Adicionar</button>
+<div id="listaObs"></div>
 </div>
 
 <div class="box">
@@ -144,7 +174,7 @@ border-radius:10px;
 let banco = JSON.parse(localStorage.getItem("banco")) || {};
 let data;
 
-let tipos = ["Sem ID","Abrir Chamado","Reembalar","Avarias","Backlog Operacional","Tratativa Operacional"];
+let tipos = ["Sem ID","Chamado aberto","Abrir Chamado","Reembalar","Avarias","Backlog Operacional","Tratativa Operacional"];
 
 function formatarDataBR(d){
 let [a,m,dd]=d.split("-");
@@ -154,7 +184,7 @@ return `${dd}/${m}/${a}`;
 function garantirData(){
 data=document.getElementById("data").value;
 if(!banco[data]){
-banco[data]={dados:{},obs:{},chamados:[],pico:[]};
+banco[data]={dados:{},obs:{},chamados:[],pico:[],observacoes:[]};
 }
 }
 
@@ -163,6 +193,7 @@ garantirData();
 render();
 renderChamados();
 renderPico();
+renderObs();
 }
 
 function salvar(){
@@ -194,7 +225,6 @@ if(score>60)return["🟠 ATENÇÃO","orange"];
 return["🟢 CONTROLADA","lightgreen"];
 }
 
-/* 🔥 CORREÇÃO DA PORCENTAGEM */
 function calc(h,r){
 let diff = h - r;
 let seta = diff>0 ? "⬆️" : diff<0 ? "⬇️" : "➖";
@@ -222,7 +252,6 @@ let sem=d.dados["Sem ID"]||0;
 let av=d.dados["Avarias"]||0;
 let ch=(d.chamados||[]).length;
 
-/* comparação */
 let datas=Object.keys(banco).sort();
 let index=datas.indexOf(data);
 
@@ -268,8 +297,14 @@ html+="<br>";
 }
 
 if(d.pico.length){
-html+=`🕒 Pico:<br>`;
-d.pico.forEach(p=> html+=`🟡 ${p.hora} - ${p.obs}<br>`);
+html+=`🕒 REGISTRO DE FLUXO POR HORÁRIO:<br>`;
+d.pico.forEach(p=> html+=`<div class="obsDestaque">🟡 ${p.hora} - ${p.obs}</div>`);
+}
+
+/* OBSERVAÇÕES NO RESUMO */
+if(d.observacoes && d.observacoes.length){
+html+=`<br>📝 OBSERVAÇÕES:<br>`;
+d.observacoes.forEach(o=> html+=`<div class="obsDestaque">- ${o}</div>`);
 }
 
 html+=`<br><b>📦 TOTAL: ${total}</b><br><br>${compHTML}`;
@@ -277,7 +312,6 @@ html+=`<br><b>📦 TOTAL: ${total}</b><br><br>${compHTML}`;
 resumo.innerHTML=html;
 }
 
-/* resto igual */
 function render(){
 let div=fechamento;
 div.innerHTML="";
@@ -321,23 +355,12 @@ atualizarResumo(total);
 function limpar(){
 if(confirm("Limpar apenas este dia?")){
 garantirData();
-banco[data]={
-dados:{
-"Sem ID":0,
-"Abrir Chamado":0,
-"Reembalar":0,
-"Avarias":0,
-"Backlog Operacional":0,
-"Tratativa Operacional":0
-},
-obs:{},
-chamados:[],
-pico:[]
-};
+banco[data]={dados:{},obs:{},chamados:[],pico:[],observacoes:[]};
 salvar();
 render();
 renderChamados();
 renderPico();
+renderObs();
 }
 }
 
@@ -394,6 +417,52 @@ horaPico.value="";
 obsPico.value="";
 }
 
+function delPico(i){
+garantirData();
+banco[data].pico.splice(i,1);
+salvar();
+renderPico();
+render();
+}
+
+function renderObs(){
+listaObs.innerHTML="";
+(banco[data]?.observacoes||[]).forEach((o,i)=>{
+listaObs.innerHTML+=`
+<div class="card" style="display:flex;justify-content:space-between;">
+<span>📝 ${o}</span>
+<button onclick="delObs(${i})">❌</button>
+</div>`;
+});
+}
+
+function addObs(){
+garantirData();
+
+let texto=document.getElementById("obsTexto").value;
+if(!texto) return;
+
+if(!banco[data].observacoes){
+banco[data].observacoes = [];
+}
+
+banco[data].observacoes.push(texto);
+
+salvar();
+renderObs();
+render();
+
+document.getElementById("obsTexto").value="";
+}
+
+function delObs(i){
+garantirData();
+banco[data].observacoes.splice(i,1);
+salvar();
+renderObs();
+render();
+}
+
 function toggleComp(){
 compArea.classList.toggle("hidden");
 if(!compArea.classList.contains("hidden")) comparar();
@@ -429,10 +498,10 @@ let html=`<b>📊 COMPARAÇÃO (${tipo.toUpperCase()})</b><br><br>`;
 let texto = temHistorico ? calc(i.h,i.r) : "Sem histórico";
 
 html+=`
-<div class="card">
+<div class="card" style="text-align:left;">
 <b>${i.n}</b><br>
 Hoje: ${i.h} | ${nomeRef}: ${temHistorico ? i.r : "Sem histórico"}<br>
-${texto}
+<b>${texto}</b>
 </div>`;
 });
 
@@ -455,13 +524,14 @@ let ant=banco[datas[i-1]]||{dados:{}};
 let diff=(atual.dados["Sem ID"]||0)-(ant.dados["Sem ID"]||0);
 let trend=diff>0?"⬆️ Subiu":diff<0?"⬇️ Caiu":"➖ Igual";
 
+let perc = (ant.dados && ant.dados["Sem ID"]) ? (((atual.dados["Sem ID"]||0 - (ant.dados["Sem ID"]||0))/(ant.dados["Sem ID"]||1))*100).toFixed(1)+"%" : "Novo";
 html+=`
-<div class="card">
+<div class="card" style="border-left:6px solid #053d25;text-align:left;">
 <b>${formatarDataBR(d)}</b><br>
 Sem ID: ${atual.dados["Sem ID"]||0}<br>
 Avarias: ${atual.dados["Avarias"]||0}<br>
 Chamados: ${(atual.chamados||[]).length}<br>
-${trend}
+${trend} (${perc})
 </div>`;
 });
 
@@ -479,7 +549,6 @@ data=hoje;
 document.getElementById("data").value=hoje;
 trocarDia();
 }
-
 </script>
 
 </body>
